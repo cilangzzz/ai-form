@@ -1,0 +1,30 @@
+{
+  "deepssek-r1": {
+    "model": {
+      "name": ""
+    },
+    "server": {
+      "url": "https://api.deepseek.com"
+    },
+    "key": {
+      "key": ""
+    },
+    "proxy": {
+      "socket": "http://127.0.0.1:7897"
+    }
+  },
+  "qwen-3-fast": {
+    "model": {
+      "name": "qwen-turbo-latest"
+    },
+    "server": {
+      "url": "https://dashscope.aliyuncs.com/compatible-mode/v1"
+    },
+    "key": {
+      "key": ""
+    },
+    "proxy": {
+      "socket": "http://127.0.0.1:7897"
+    }
+  }
+}
