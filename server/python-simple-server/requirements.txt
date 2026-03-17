@@ -1,0 +1,23 @@
+# AI-Form Server Requirements
+# Install with: pip install -r requirements.txt
+
+# Web Framework
+flask>=2.3.0
+
+# CORS Support
+flask-cors>=4.0.0
+
+# Rate Limiting
+flask-limiter>=3.5.0
+
+# OpenAI SDK (for AI chat)
+openai>=1.0.0
+
+# HTTP Client
+httpx>=0.25.0
+
+# Retry Logic
+tenacity>=8.2.0
+
+# Environment Variables
+python-dotenv>=1.0.0

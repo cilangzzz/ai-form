@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(cat ~/.claude/tasks/ai-form-architecture/*.json)",
+      "Bash(claude tasks)",
+      "Read(//c/Users/sysadmin/.claude/**)"
+    ]
+  }
+}
