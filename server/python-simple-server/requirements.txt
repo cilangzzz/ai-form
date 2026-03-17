@@ -21,3 +21,6 @@ tenacity>=8.2.0
 
 # Environment Variables
 python-dotenv>=1.0.0
+
+# JWT Authentication
+flask-jwt-extended>=4.6.0

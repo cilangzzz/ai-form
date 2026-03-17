@@ -10,13 +10,20 @@ import json
 import os
 import logging
 import sys
-from datetime import datetime
+import uuid
+import re
+import html
+from datetime import datetime, timedelta
 from functools import wraps
 
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, g, Response
 from flask_cors import CORS
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
+from flask_jwt_extended import (
+    JWTManager, create_access_token, create_refresh_token,
+    get_jwt_identity, jwt_required, get_jwt
+)
 from tenacity import stop_after_attempt, retry, retry_if_exception_type, wait_exponential
 from dotenv import load_dotenv
 
@@ -63,6 +70,15 @@ class Config:
     # Rate limiting
     RATE_LIMIT_DEFAULT = os.getenv('RATE_LIMIT_DEFAULT', '100 per hour')
     RATE_LIMIT_CHAT = os.getenv('RATE_LIMIT_CHAT', '30 per minute')
+
+    # JWT Authentication settings
+    JWT_SECRET_KEY = os.getenv('JWT_SECRET_KEY', 'change-this-secret-in-production')
+    JWT_ACCESS_TOKEN_EXPIRES = int(os.getenv('JWT_ACCESS_TOKEN_EXPIRES', '3600'))  # 1 hour default
+    JWT_REFRESH_TOKEN_EXPIRES = int(os.getenv('JWT_REFRESH_TOKEN_EXPIRES', '2592000'))  # 30 days default
+
+    # API Key Authentication
+    API_KEYS = [key.strip() for key in os.getenv('API_KEYS', '').split(',') if key.strip()]
+    API_KEY_RATE_LIMIT = os.getenv('API_KEY_RATE_LIMIT', '60 per minute')
 
     @classmethod
     def load_from_config_file(cls, config_path: str = './config.json') -> dict:
@@ -122,6 +138,14 @@ app = Flask(__name__)
 
 # Security: Set max content length
 app.config['MAX_CONTENT_LENGTH'] = Config.MAX_CONTENT_LENGTH
+
+# JWT Configuration
+app.config['JWT_SECRET_KEY'] = Config.JWT_SECRET_KEY
+app.config['JWT_ACCESS_TOKEN_EXPIRES'] = timedelta(seconds=Config.JWT_ACCESS_TOKEN_EXPIRES)
+app.config['JWT_REFRESH_TOKEN_EXPIRES'] = timedelta(seconds=Config.JWT_REFRESH_TOKEN_EXPIRES)
+
+# Initialize JWT Manager
+jwt = JWTManager(app)
 
 # CORS Configuration
 CORS(app, resources={
@@ -232,8 +256,313 @@ def ai_retry_decorator(func):
 
 
 # -------------------------------
+# Authentication Middleware
+# -------------------------------
+def get_api_key_from_request():
+    """Extract API key from request headers."""
+    return request.headers.get('X-API-Key')
+
+
+def validate_api_key(api_key: str) -> bool:
+    """Validate API key against configured keys."""
+    if not Config.API_KEYS:
+        logger.warning("No API keys configured - API key authentication disabled")
+        return False
+    return api_key in Config.API_KEYS
+
+
+def get_rate_limit_key():
+    """Get rate limit key based on authentication method."""
+    # Check for API key first
+    api_key = get_api_key_from_request()
+    if api_key and validate_api_key(api_key):
+        return f"api_key:{api_key}"
+
+    # Fall back to JWT identity or remote address
+    try:
+        identity = get_jwt_identity()
+        if identity:
+            return f"jwt:{identity}"
+    except Exception:
+        pass
+
+    return get_remote_address()
+
+
+def require_auth(func):
+    """
+    Authentication decorator that supports both JWT and API Key authentication.
+
+    This decorator validates requests using either:
+    1. X-API-Key header - validated against API_KEYS environment variable
+    2. Authorization: Bearer <token> - validated using JWT
+
+    Returns 401 if no valid authentication is provided.
+    Returns 403 if authentication credentials are invalid.
+    """
+    @wraps(func)
+    def wrapper(*args, **kwargs):
+        # Check for API Key authentication first
+        api_key = get_api_key_from_request()
+        if api_key:
+            if validate_api_key(api_key):
+                logger.debug(f"API key authentication successful")
+                return func(*args, **kwargs)
+            else:
+                logger.warning(f"Invalid API key attempt")
+                return jsonify({
+                    "success": False,
+                    "error": "Invalid API key",
+                    "code": "INVALID_API_KEY"
+                }), 403
+
+        # Check for JWT authentication
+        auth_header = request.headers.get('Authorization', '')
+        if auth_header.startswith('Bearer '):
+            try:
+                # Use JWT required validation
+                from flask_jwt_extended import verify_jwt_in_request
+                verify_jwt_in_request()
+                logger.debug(f"JWT authentication successful")
+                return func(*args, **kwargs)
+            except Exception as e:
+                logger.warning(f"JWT validation failed: {type(e).__name__}")
+                return jsonify({
+                    "success": False,
+                    "error": "Invalid or expired token",
+                    "code": "INVALID_TOKEN"
+                }), 401
+
+        # No authentication provided
+        logger.warning("Authentication required but not provided")
+        return jsonify({
+            "success": False,
+            "error": "Authentication required. Provide either X-API-Key header or Bearer token.",
+            "code": "AUTHENTICATION_REQUIRED"
+        }), 401
+
+    return wrapper
+
+
+def optional_auth(func):
+    """
+    Optional authentication decorator that extracts identity if present.
+
+    Use this when authentication is optional but you want to track authenticated users.
+    """
+    @wraps(func)
+    def wrapper(*args, **kwargs):
+        # Set g.auth_method for tracking
+        from flask import g
+
+        api_key = get_api_key_from_request()
+        if api_key and validate_api_key(api_key):
+            g.auth_method = 'api_key'
+            g.auth_identity = f"api_key:{api_key[:8]}..."
+        else:
+            try:
+                from flask_jwt_extended import verify_jwt_in_request, get_jwt_identity
+                verify_jwt_in_request(optional=True)
+                identity = get_jwt_identity()
+                if identity:
+                    g.auth_method = 'jwt'
+                    g.auth_identity = identity
+                else:
+                    g.auth_method = None
+                    g.auth_identity = None
+            except Exception:
+                g.auth_method = None
+                g.auth_identity = None
+
+        return func(*args, **kwargs)
+
+    return wrapper
+
+
+# -------------------------------
+# JWT Error Handlers
+# -------------------------------
+@jwt.expired_token_loader
+def expired_token_callback(jwt_header, jwt_payload):
+    """Handle expired JWT tokens."""
+    return jsonify({
+        "success": False,
+        "error": "Token has expired",
+        "code": "TOKEN_EXPIRED"
+    }), 401
+
+
+@jwt.invalid_token_loader
+def invalid_token_callback(error_string):
+    """Handle invalid JWT tokens."""
+    return jsonify({
+        "success": False,
+        "error": "Invalid token",
+        "code": "INVALID_TOKEN"
+    }), 401
+
+
+@jwt.unauthorized_loader
+def missing_token_callback(error_string):
+    """Handle missing JWT tokens."""
+    return jsonify({
+        "success": False,
+        "error": "Authorization token is required",
+        "code": "TOKEN_REQUIRED"
+    }), 401
+
+
+@jwt.revoked_token_loader
+def revoked_token_callback(jwt_header, jwt_payload):
+    """Handle revoked JWT tokens."""
+    return jsonify({
+        "success": False,
+        "error": "Token has been revoked",
+        "code": "TOKEN_REVOKED"
+    }), 401
+
+
+# -------------------------------
 # API Routes
 # -------------------------------
+
+# -------------------------------
+# Authentication Routes
+# -------------------------------
+@app.route('/auth/token', methods=['POST'])
+@limiter.limit("10 per minute")
+def auth_token():
+    """
+    Generate JWT access and refresh tokens.
+
+    Request body (JSON):
+        - api_key: Valid API key from API_KEYS environment variable (required)
+
+    Returns:
+        JSON response with access_token, refresh_token, and expires_in
+    """
+    try:
+        if not request.is_json:
+            return jsonify({
+                "success": False,
+                "error": "Content-Type must be application/json",
+                "code": "INVALID_CONTENT_TYPE"
+            }), 400
+
+        data = request.get_json()
+        api_key = data.get('api_key')
+
+        if not api_key:
+            return jsonify({
+                "success": False,
+                "error": "api_key is required",
+                "code": "API_KEY_REQUIRED"
+            }), 400
+
+        # Validate API key
+        if not validate_api_key(api_key):
+            logger.warning(f"Invalid API key attempt for token generation")
+            return jsonify({
+                "success": False,
+                "error": "Invalid API key",
+                "code": "INVALID_API_KEY"
+            }), 403
+
+        # Generate tokens with API key as identity
+        access_token = create_access_token(identity=api_key)
+        refresh_token = create_refresh_token(identity=api_key)
+
+        logger.info(f"JWT tokens generated successfully for API key")
+
+        return jsonify({
+            "success": True,
+            "data": {
+                "access_token": access_token,
+                "refresh_token": refresh_token,
+                "token_type": "Bearer",
+                "expires_in": Config.JWT_ACCESS_TOKEN_EXPIRES
+            }
+        })
+
+    except Exception as e:
+        logger.error(f"Error generating tokens: {type(e).__name__}")
+        return jsonify({
+            "success": False,
+            "error": "Failed to generate tokens",
+            "code": "TOKEN_GENERATION_ERROR"
+        }), 500
+
+
+@app.route('/auth/refresh', methods=['POST'])
+@jwt_required(refresh=True)
+@limiter.limit("20 per minute")
+def auth_refresh():
+    """
+    Refresh JWT access token using a valid refresh token.
+
+    Request Headers:
+        - Authorization: Bearer <refresh_token>
+
+    Returns:
+        JSON response with new access_token and expires_in
+    """
+    try:
+        current_user = get_jwt_identity()
+        access_token = create_access_token(identity=current_user)
+
+        logger.debug(f"Access token refreshed for identity")
+
+        return jsonify({
+            "success": True,
+            "data": {
+                "access_token": access_token,
+                "token_type": "Bearer",
+                "expires_in": Config.JWT_ACCESS_TOKEN_EXPIRES
+            }
+        })
+
+    except Exception as e:
+        logger.error(f"Error refreshing token: {type(e).__name__}")
+        return jsonify({
+            "success": False,
+            "error": "Failed to refresh token",
+            "code": "TOKEN_REFRESH_ERROR"
+        }), 500
+
+
+@app.route('/auth/verify', methods=['GET'])
+@require_auth
+def auth_verify():
+    """
+    Verify current authentication status.
+
+    Returns:
+        JSON response with authentication details
+    """
+    # Check authentication method
+    api_key = get_api_key_from_request()
+    if api_key and validate_api_key(api_key):
+        return jsonify({
+            "success": True,
+            "data": {
+                "authenticated": True,
+                "method": "api_key",
+                "identity": f"api_key:{api_key[:8]}..."
+            }
+        })
+
+    # JWT authentication
+    identity = get_jwt_identity()
+    return jsonify({
+        "success": True,
+        "data": {
+            "authenticated": True,
+            "method": "jwt",
+            "identity": identity
+        }
+    })
+
+
 @app.route('/health', methods=['GET'])
 def health_check():
     """
@@ -264,10 +593,13 @@ def health_check():
 
 
 @app.route('/ai/chat_remark', methods=['POST'])
+@require_auth
 @limiter.limit(Config.RATE_LIMIT_CHAT)
 def ai_chat_remark_api():
     """
     Backend API: Receive userInput, call AI remark interface and return response.
+
+    Requires authentication via X-API-Key header or Bearer token.
 
     Request body (JSON or form-data):
         - userInput: User input text (required, max 10000 chars)

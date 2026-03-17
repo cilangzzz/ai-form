@@ -1464,9 +1464,148 @@
     };
 
     // ============================================================
-    // 表单填充器
+    // 表单填充器 - 支持 Vue/React 响应式框架
     // ============================================================
     const FormFiller = {
+        // 框架检测缓存
+        frameworkCache: null,
+
+        // 检测当前页面使用的框架
+        detectFramework() {
+            if (this.frameworkCache) return this.frameworkCache;
+
+            const frameworks = {
+                vue: false,
+                vueVersion: null,
+                react: false
+            };
+
+            // 检测 Vue
+            if (window.Vue) {
+                frameworks.vue = true;
+                frameworks.vueVersion = window.Vue.version || '2.x';
+            } else if (document.querySelector('[data-v-]') ||
+                       document.querySelector('[__vue__]') ||
+                       document.querySelector('[__vueApp__]')) {
+                frameworks.vue = true;
+            }
+
+            // 检测 React
+            if (window.React || document.querySelector('[data-reactroot]')) {
+                frameworks.react = true;
+            }
+
+            // 检测元素上的 Vue 实例
+            const allElements = document.querySelectorAll('*');
+            for (const el of allElements) {
+                if (el.__vue__ || el._vnode || el.__vueApp__) {
+                    frameworks.vue = true;
+                    break;
+                }
+                if (el._reactRootContainer || el._reactInternals) {
+                    frameworks.react = true;
+                    break;
+                }
+            }
+
+            this.frameworkCache = frameworks;
+            console.log('Detected frameworks:', frameworks);
+            return frameworks;
+        },
+
+        // 使用原生 setter 设置值 - 兼容 Vue/React
+        setNativeValue(element, value) {
+            // 获取正确的原型
+            let prototype;
+            if (element.tagName === 'TEXTAREA') {
+                prototype = window.HTMLTextAreaElement.prototype;
+            } else if (element.tagName === 'SELECT') {
+                prototype = window.HTMLSelectElement.prototype;
+            } else {
+                prototype = window.HTMLInputElement.prototype;
+            }
+
+            // 获取原生的 value setter
+            const nativeDescriptor = Object.getOwnPropertyDescriptor(prototype, 'value');
+
+            if (nativeDescriptor && nativeDescriptor.set) {
+                // 使用原生 setter 设置值，这会触发 Vue/React 的响应式更新
+                nativeDescriptor.set.call(element, value);
+            } else {
+                // 降级方案：直接设置
+                element.value = value;
+            }
+
+            // 触发 InputEvent (比 Event 更适合表单输入)
+            const inputEvent = new InputEvent('input', {
+                bubbles: true,
+                cancelable: true,
+                inputType: 'insertText',
+                data: value
+            });
+            element.dispatchEvent(inputEvent);
+
+            // 额外触发 change 和 blur 事件
+            element.dispatchEvent(new Event('change', { bubbles: true }));
+            element.dispatchEvent(new Event('blur', { bubbles: true }));
+        },
+
+        // 为 Vue 组件特殊处理
+        setVueValue(element, value) {
+            const frameworks = this.detectFramework();
+
+            // 先设置值
+            this.setNativeValue(element, value);
+
+            // Vue 2 特殊处理：尝试调用 $set 或触发 watcher
+            if (frameworks.vue && frameworks.vueVersion?.startsWith('2')) {
+                const vueInstance = element.__vue__;
+                if (vueInstance && vueInstance.$set) {
+                    const propName = element.name || element.id;
+                    if (propName && vueInstance.$data) {
+                        vueInstance.$set(vueInstance.$data, propName, value);
+                    }
+                }
+            }
+
+            // Vue 3 特殊处理
+            if (frameworks.vue && frameworks.vueVersion?.startsWith('3')) {
+                const app = element.__vueApp__;
+                if (app) {
+                    // Vue 3 使用 Proxy，原生 setter 应该已经触发更新
+                }
+            }
+        },
+
+        // 为 React 组件特殊处理
+        setReactValue(element, value) {
+            // React 使用合成事件系统
+            // 先设置值
+            this.setNativeValue(element, value);
+
+            // React 16+ 特殊处理：模拟 React 的事件处理
+            const tracker = element._valueTracker || element._dispatchListeners;
+            if (tracker) {
+                // 触发 React 的 onChange
+                const changeEvent = new Event('change', { bubbles: true });
+                element.dispatchEvent(changeEvent);
+            }
+        },
+
+        // 智能设置值 - 自动检测框架并使用最佳策略
+        smartSetValue(element, value) {
+            const frameworks = this.detectFramework();
+
+            if (frameworks.vue) {
+                this.setVueValue(element, value);
+            } else if (frameworks.react) {
+                this.setReactValue(element, value);
+            } else {
+                // 普通网页，使用原生设置
+                this.setNativeValue(element, value);
+            }
+        },
+
         // 查找表单输入元素
         findFormInputs() {
             const currentElement = document.activeElement;
@@ -1482,6 +1621,10 @@
                 return;
             }
 
+            // 检测框架
+            const frameworks = this.detectFramework();
+            console.log('Filling form fields with framework detection:', frameworks);
+
             inputs.forEach(input => {
                 const fieldName = input.name || input.id || input.placeholder;
                 if (!fieldName) return;
@@ -1492,14 +1635,12 @@
                 );
 
                 if (matchedKey && suggestion[matchedKey]) {
-                    // 设置值
-                    input.value = suggestion[matchedKey];
+                    const value = suggestion[matchedKey];
 
-                    // 触发事件
-                    ['input', 'change', 'blur'].forEach(eventType => {
-                        const event = new Event(eventType, { bubbles: true });
-                        input.dispatchEvent(event);
-                    });
+                    // 使用智能设置值方法
+                    this.smartSetValue(input, value);
+
+                    console.log(`Filled field "${fieldName}" with value "${value}"`);
                 }
             });
         }
