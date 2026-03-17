@@ -16,17 +16,18 @@ Provides:
 - Test database/data fixtures
 """
 
+from __future__ import annotations
+
 import os
 import sys
-import json
-import time
-import pytest
 from datetime import datetime, timedelta, timezone
-from unittest.mock import Mock, patch, MagicMock
+from typing import Dict
+from unittest.mock import MagicMock
 
-# Add parent directory to path for imports
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+import pytest
 
+# Add src directory to path for imports
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 # -------------------------------
 # Test Configuration
@@ -42,7 +43,7 @@ TEST_API_KEYS = {
     "valid_key": "test_api_key_valid_12345678",
     "admin_key": "test_api_key_admin_87654321",
     "expired_key": "test_api_key_expired_11111111",
-    "invalid_key": "invalid_key_format"
+    "invalid_key": "invalid_key_format",
 }
 
 # Test User Credentials
@@ -50,17 +51,14 @@ TEST_USERS = {
     "valid_user": {
         "username": "testuser",
         "password": "TestPassword123!",
-        "role": "user"
+        "role": "user",
     },
     "admin_user": {
         "username": "admin",
         "password": "AdminPassword456!",
-        "role": "admin"
+        "role": "admin",
     },
-    "invalid_user": {
-        "username": "invalid",
-        "password": "wrong_password"
-    }
+    "invalid_user": {"username": "invalid", "password": "wrong_password"},
 }
 
 
@@ -70,21 +68,14 @@ TEST_USERS = {
 MOCK_AI_RESPONSES = {
     "success": {
         "success": True,
-        "data": {
-            "response": ["['username': 'testUser123', 'password': 'A1b@cD9eF']"]
-        }
+        "data": {"response": ["['username': 'testUser123', 'password': 'A1b@cD9eF']"]},
     },
-    "empty_response": {
-        "success": True,
-        "data": {
-            "response": []
-        }
-    },
+    "empty_response": {"success": True, "data": {"response": []}},
     "error_response": {
         "success": False,
         "error": "AI service error",
-        "code": "AI_SERVICE_ERROR"
-    }
+        "code": "AI_SERVICE_ERROR",
+    },
 }
 
 
@@ -93,18 +84,10 @@ MOCK_AI_RESPONSES = {
 # -------------------------------
 def pytest_configure(config):
     """Configure pytest markers."""
-    config.addinivalue_line(
-        "markers", "auth: Authentication tests"
-    )
-    config.addinivalue_line(
-        "markers", "security: Security validation tests"
-    )
-    config.addinivalue_line(
-        "markers", "performance: Performance tests"
-    )
-    config.addinivalue_line(
-        "markers", "integration: Integration tests"
-    )
+    config.addinivalue_line("markers", "auth: Authentication tests")
+    config.addinivalue_line("markers", "security: Security validation tests")
+    config.addinivalue_line("markers", "performance: Performance tests")
+    config.addinivalue_line("markers", "integration: Integration tests")
 
 
 # -------------------------------
@@ -114,24 +97,29 @@ def pytest_configure(config):
 def app():
     """Create and configure Flask application for testing."""
     # Set test environment variables
-    os.environ['TESTING'] = 'true'
-    os.environ['JWT_SECRET_KEY'] = TEST_JWT_SECRET
-    os.environ['JWT_ALGORITHM'] = TEST_JWT_ALGORITHM
-    os.environ['FLASK_DEBUG'] = 'false'
-    os.environ['AI_API_KEY'] = 'test_api_key_for_testing'
-    os.environ['AI_BASE_URL'] = 'https://test.api.url'
-    os.environ['AI_MODEL_NAME'] = 'test-model'
+    os.environ["TESTING"] = "true"
+    os.environ["JWT_SECRET_KEY"] = TEST_JWT_SECRET
+    os.environ["JWT_ALGORITHM"] = TEST_JWT_ALGORITHM
+    os.environ["FLASK_DEBUG"] = "false"
+    os.environ["AI_API_KEY"] = "test_api_key_for_testing"
+    os.environ["AI_BASE_URL"] = "https://test.api.url"
+    os.environ["AI_MODEL_NAME"] = "test-model"
 
-    # Import app after environment variables are set
-    from AiServer import app as flask_app
+    # Import after environment variables are set
+    from ai_form_server import create_app
+    from ai_form_server.config import init_config, Config, SecurityConfig, FlaskConfig
 
-    # Configure app for testing
-    flask_app.config.update({
-        'TESTING': True,
-        'JWT_SECRET_KEY': TEST_JWT_SECRET,
-        'JWT_ALGORITHM': TEST_JWT_ALGORITHM,
-        'MAX_CONTENT_LENGTH': 1048576,
-    })
+    # Create test configuration
+    config = Config(
+        flask=FlaskConfig(testing=True, debug=False),
+        security=SecurityConfig(
+            jwt_secret_key=TEST_JWT_SECRET,
+            jwt_algorithm=TEST_JWT_ALGORITHM,
+        ),
+    )
+    init_config(config)
+
+    flask_app = create_app(config)
 
     yield flask_app
 
@@ -172,13 +160,13 @@ def test_users():
 @pytest.fixture
 def valid_user_credentials(test_users):
     """Provide valid user credentials for authentication."""
-    return test_users['valid_user']
+    return test_users["valid_user"]
 
 
 @pytest.fixture
 def admin_user_credentials(test_users):
     """Provide admin user credentials for authentication."""
-    return test_users['admin_user']
+    return test_users["admin_user"]
 
 
 # -------------------------------
@@ -193,7 +181,7 @@ def generate_token():
         username: str = "testuser",
         role: str = "user",
         expires_delta: timedelta = None,
-        secret: str = TEST_JWT_SECRET
+        secret: str = TEST_JWT_SECRET,
     ) -> str:
         """Generate a JWT token with specified parameters."""
         if expires_delta is None:
@@ -201,11 +189,11 @@ def generate_token():
 
         now = datetime.now(timezone.utc)
         payload = {
-            'sub': username,
-            'role': role,
-            'iat': now,
-            'exp': now + expires_delta,
-            'type': 'access'
+            "sub": username,
+            "role": role,
+            "iat": now,
+            "exp": now + expires_delta,
+            "type": "access",
         }
         return jwt.encode(payload, secret, algorithm=TEST_JWT_ALGORITHM)
 
@@ -221,7 +209,7 @@ def generate_refresh_token():
         username: str = "testuser",
         role: str = "user",
         expires_delta: timedelta = None,
-        secret: str = TEST_JWT_SECRET
+        secret: str = TEST_JWT_SECRET,
     ) -> str:
         """Generate a refresh token with specified parameters."""
         if expires_delta is None:
@@ -229,11 +217,11 @@ def generate_refresh_token():
 
         now = datetime.now(timezone.utc)
         payload = {
-            'sub': username,
-            'role': role,
-            'iat': now,
-            'exp': now + expires_delta,
-            'type': 'refresh'
+            "sub": username,
+            "role": role,
+            "iat": now,
+            "exp": now + expires_delta,
+            "type": "refresh",
         }
         return jwt.encode(payload, secret, algorithm=TEST_JWT_ALGORITHM)
 
@@ -270,15 +258,19 @@ def expired_refresh_token(generate_refresh_token):
 @pytest.fixture
 def mock_ai_response():
     """Provide mock AI response for chat endpoint tests."""
-    return MOCK_AI_RESPONSES['success'].copy()
+    return MOCK_AI_RESPONSES["success"].copy()
 
 
 @pytest.fixture
 def mock_chat_assistant():
     """Mock ChatAssistant for testing without actual AI calls."""
     mock = MagicMock()
-    mock.chatWithoutContext.return_value = "['username': 'testUser123', 'password': 'A1b@cD9eF']"
-    mock.chatSupplement.return_value = "['username': 'testUser123', 'password': 'A1b@cD9eF']"
+    mock.chat_without_context.return_value = (
+        "['username': 'testUser123', 'password': 'A1b@cD9eF']"
+    )
+    mock.chat_supplement.return_value = (
+        "['username': 'testUser123', 'password': 'A1b@cD9eF']"
+    )
     return mock
 
 
@@ -293,35 +285,29 @@ def mock_openai_client():
     return mock_client
 
 
-@pytest.fixture
-def mock_rate_limiter():
-    """Mock rate limiter for testing rate limit bypass."""
-    with patch('AiServer.limiter') as mock:
-        yield mock
-
-
 # -------------------------------
 # Request Helpers
 # -------------------------------
 @pytest.fixture
 def auth_headers():
     """Factory fixture to create authorization headers."""
-    def _create_auth_headers(token: str, token_type: str = "Bearer") -> dict:
+
+    def _create_auth_headers(token: str, token_type: str = "Bearer") -> Dict[str, str]:
         return {
-            'Authorization': f'{token_type} {token}',
-            'Content-Type': 'application/json'
+            "Authorization": f"{token_type} {token}",
+            "Content-Type": "application/json",
         }
+
     return _create_auth_headers
 
 
 @pytest.fixture
 def api_key_headers():
     """Factory fixture to create API key headers."""
-    def _create_api_key_headers(api_key: str) -> dict:
-        return {
-            'X-API-Key': api_key,
-            'Content-Type': 'application/json'
-        }
+
+    def _create_api_key_headers(api_key: str) -> Dict[str, str]:
+        return {"X-API-Key": api_key, "Content-Type": "application/json"}
+
     return _create_api_key_headers
 
 
@@ -331,18 +317,15 @@ def api_key_headers():
 @pytest.fixture
 def sample_chat_request():
     """Provide sample chat request data."""
-    return {
-        'userInput': 'Generate test data for username field',
-        'chatContext': None
-    }
+    return {"userInput": "Generate test data for username field", "chatContext": None}
 
 
 @pytest.fixture
 def sample_chat_request_with_context():
     """Provide sample chat request with context."""
     return {
-        'userInput': 'Generate test data for email field',
-        'chatContext': 'Email field: text input, required, valid email format'
+        "userInput": "Generate test data for email field",
+        "chatContext": "Email field: text input, required, valid email format",
     }
 
 
@@ -351,13 +334,13 @@ def invalid_chat_requests():
     """Provide various invalid chat request payloads for testing."""
     return [
         # Empty input
-        {'userInput': ''},
+        {"userInput": ""},
         # Missing userInput
-        {'chatContext': 'some context'},
+        {"chatContext": "some context"},
         # Input too long
-        {'userInput': 'a' * 10001},
+        {"userInput": "a" * 10001},
         # Context too long
-        {'userInput': 'test', 'chatContext': 'a' * 50001},
+        {"userInput": "test", "chatContext": "a" * 50001},
         # Empty dict
         {},
     ]
@@ -370,10 +353,10 @@ def invalid_chat_requests():
 def performance_test_config():
     """Configuration for performance tests."""
     return {
-        'concurrent_requests': 50,
-        'max_response_time_ms': 200,
-        'min_success_rate': 0.99,
-        'timeout_seconds': 30
+        "concurrent_requests": 50,
+        "max_response_time_ms": 200,
+        "min_success_rate": 0.99,
+        "timeout_seconds": 30,
     }
 
 
@@ -393,10 +376,10 @@ def cleanup_environment():
 
 
 @pytest.fixture(autouse=True)
-def reset_rate_limiter(app):
-    """Reset rate limiter state between tests."""
-    from flask_limiter import Limiter
-    limiter = app.extensions.get('limiter', None)
-    if limiter:
-        limiter.reset()
+def reset_user_store():
+    """Reset UserStore before and after each test."""
+    from ai_form_server.auth.jwt_handler import UserStore
+
+    UserStore.reset()
     yield
+    UserStore.reset()
