@@ -1,6 +1,10 @@
 # AI-Form Server Requirements
 # Install with: pip install -r requirements.txt
 
+# -------------------------------
+# Core Dependencies
+# -------------------------------
+
 # Web Framework
 flask>=2.3.0
 
@@ -22,5 +26,25 @@ tenacity>=8.2.0
 # Environment Variables
 python-dotenv>=1.0.0
 
-# JWT Authentication
-flask-jwt-extended>=4.6.0
+# -------------------------------
+# Authentication Dependencies
+# -------------------------------
+
+# JWT Support (lightweight, no Flask dependency)
+PyJWT>=2.8.0
+
+# -------------------------------
+# Testing Dependencies (dev)
+# Install with: pip install -r requirements.txt --extra-index-url https://pypi.org/simple
+# -------------------------------
+
+# Test Framework
+pytest>=7.4.0
+pytest-cov>=4.1.0
+pytest-mock>=3.11.0
+pytest-timeout>=2.1.0
+pytest-xdist>=3.3.0
+
+# Test Utilities
+responses>=0.23.0
+freezegun>=1.2.0

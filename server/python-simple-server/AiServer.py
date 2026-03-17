@@ -152,7 +152,13 @@ CORS(app, resources={
     r"/ai/*": {
         "origins": os.getenv('CORS_ORIGINS', '*').split(','),
         "methods": ["POST", "OPTIONS"],
-        "allow_headers": ["Content-Type", "Authorization"],
+        "allow_headers": ["Content-Type", "Authorization", "X-API-Key"],
+        "max_age": 3600
+    },
+    r"/auth/*": {
+        "origins": os.getenv('CORS_ORIGINS', '*').split(','),
+        "methods": ["GET", "POST", "OPTIONS"],
+        "allow_headers": ["Content-Type", "Authorization", "X-API-Key"],
         "max_age": 3600
     }
 })
@@ -164,6 +170,209 @@ limiter = Limiter(
     default_limits=[Config.RATE_LIMIT_DEFAULT],
     storage_uri="memory://"
 )
+
+
+# -------------------------------
+# Security Headers Middleware
+# -------------------------------
+SECURITY_HEADERS = {
+    # Prevent MIME type sniffing
+    'X-Content-Type-Options': 'nosniff',
+    # Prevent clickjacking
+    'X-Frame-Options': 'DENY',
+    # Enable XSS filter (legacy browsers)
+    'X-XSS-Protection': '1; mode=block',
+    # Strict Transport Security (1 year + subdomains)
+    'Strict-Transport-Security': 'max-age=31536000; includeSubDomains; preload',
+    # Referrer Policy
+    'Referrer-Policy': 'strict-origin-when-cross-origin',
+    # Permissions Policy - disable unnecessary browser features
+    'Permissions-Policy': 'camera=(), microphone=(), geolocation=(), payment=()',
+    # Content Security Policy
+    'Content-Security-Policy': "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self';",
+    # Cache Control - prevent caching of API responses
+    'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',
+    'Pragma': 'no-cache',
+}
+
+
+@app.after_request
+def add_security_headers(response: Response) -> Response:
+    """
+    Add security headers to all responses.
+
+    This middleware applies defense-in-depth security headers to protect against:
+    - Clickjacking (X-Frame-Options)
+    - MIME type sniffing (X-Content-Type-Options)
+    - XSS attacks (X-XSS-Protection, Content-Security-Policy)
+    - Man-in-the-middle attacks (Strict-Transport-Security)
+    - Information leakage (Referrer-Policy, Permissions-Policy)
+    """
+    # Apply all security headers
+    for header, value in SECURITY_HEADERS.items():
+        response.headers[header] = value
+
+    # Remove server identification
+    response.headers.pop('Server', None)
+
+    return response
+
+
+# -------------------------------
+# Request ID Middleware (Tracing)
+# -------------------------------
+@app.before_request
+def add_request_id():
+    """
+    Generate and attach a unique request ID for tracing.
+
+    The request ID is:
+    - Generated as a UUID4 if not provided by client
+    - Stored in flask.g for access throughout the request
+    - Added to response headers for client correlation
+    - Included in all log messages for this request
+    """
+    # Check if client provided a request ID (for distributed tracing)
+    request_id = request.headers.get('X-Request-ID')
+
+    if not request_id:
+        # Generate new request ID
+        request_id = str(uuid.uuid4())
+
+    # Store in request context
+    g.request_id = request_id
+
+
+@app.after_request
+def add_request_id_header(response: Response) -> Response:
+    """Add request ID to response headers for client correlation."""
+    if hasattr(g, 'request_id'):
+        response.headers['X-Request-ID'] = g.request_id
+    return response
+
+
+# -------------------------------
+# Prompt Injection Sanitization
+# -------------------------------
+# Patterns that may indicate prompt injection attempts
+PROMPT_INJECTION_PATTERNS = [
+    # System prompt manipulation
+    r'(?i)ignore\s+(previous|all|prior)\s+(instructions?|prompts?|rules?)',
+    r'(?i)forget\s+(everything|all|previous)',
+    r'(?i)disregard\s+(all|any|previous)',
+    r'(?i)override\s+(previous|default|system)',
+
+    # Role manipulation
+    r'(?i)you\s+are\s+now',
+    r'(?i)act\s+as\s+(if|though|a)',
+    r'(?i)pretend\s+(to\s+be|you\s+are)',
+    r'(?i)role[ -]?play',
+
+    # Output manipulation
+    r'(?i)output\s+(the\s+)?(exact|following)',
+    r'(?i)print\s+(the\s+)?(exact|following)',
+    r'(?i)repeat\s+(after\s+me|the\s+following)',
+    r'(?i)echo\s+(back|the\s+following)',
+
+    # Instruction injection
+    r'(?i)system\s*:\s*',
+    r'(?i)assistant\s*:\s*',
+    r'(?i)user\s*:\s*',
+    r'(?i)\[system\]',
+    r'(?i)\[assistant\]',
+
+    # Data extraction attempts
+    r'(?i)reveal\s+(your|the|system)',
+    r'(?i)show\s+(me\s+)?(your|the|system)',
+    r'(?i)what\s+(is|are)\s+your\s+(instructions?|prompts?)',
+    r'(?i)tell\s+me\s+(about\s+)?your\s+(instructions?|prompts?)',
+
+    # Jailbreak attempts
+    r'(?i)developer\s+mode',
+    r'(?i)debug\s+mode',
+    r'(?i)admin\s+mode',
+    r'(?i)god\s+mode',
+    r'(?i)unrestricted',
+]
+
+# Compile patterns for performance
+COMPILED_PATTERNS = [re.compile(pattern) for pattern in PROMPT_INJECTION_PATTERNS]
+
+
+def detect_prompt_injection(text: str) -> tuple:
+    """
+    Detect potential prompt injection attempts in user input.
+
+    Args:
+        text: The input text to analyze
+
+    Returns:
+        tuple: (is_safe: bool, detected_patterns: list)
+    """
+    if not text:
+        return True, []
+
+    detected = []
+
+    for pattern in COMPILED_PATTERNS:
+        matches = pattern.findall(text)
+        if matches:
+            detected.append(pattern.pattern)
+
+    return len(detected) == 0, detected
+
+
+def sanitize_prompt_input(text: str, max_length: int = None) -> tuple:
+    """
+    Sanitize user input for prompt injection prevention.
+
+    This function:
+    1. Detects prompt injection patterns
+    2. Removes control characters
+    3. Truncates to max length if specified
+
+    Args:
+        text: The input text to sanitize
+        max_length: Optional maximum length for the text
+
+    Returns:
+        tuple: (sanitized_text: str, warnings: list)
+    """
+    warnings = []
+
+    if not text:
+        return text, warnings
+
+    # Check for prompt injection
+    is_safe, detected_patterns = detect_prompt_injection(text)
+    if not is_safe:
+        warnings.append(f"Potential prompt injection detected: {len(detected_patterns)} pattern(s) found")
+        request_id = getattr(g, 'request_id', 'N/A')
+        logger.warning(
+            f"Prompt injection attempt detected - Request ID: {request_id}, "
+            f"Patterns: {detected_patterns[:3]}"  # Log first 3 patterns
+        )
+
+    # Remove control characters (except newlines and tabs)
+    sanitized = ''.join(char for char in text if char.isprintable() or char in '\n\t\r')
+
+    # Truncate if max_length specified
+    if max_length and len(sanitized) > max_length:
+        warnings.append(f"Text truncated from {len(sanitized)} to {max_length} characters")
+        sanitized = sanitized[:max_length]
+
+    return sanitized, warnings
+
+
+def escape_ai_output(text: str) -> str:
+    """
+    Escape AI output for safe rendering in HTML contexts.
+
+    Use this function when rendering AI responses in web pages to prevent XSS.
+    """
+    if not text:
+        return text
+    return html.escape(text, quote=True)
 
 
 # -------------------------------
@@ -608,6 +817,8 @@ def ai_chat_remark_api():
     Returns:
         JSON response with AI-generated test data
     """
+    request_id = getattr(g, 'request_id', 'N/A')
+
     try:
         # Support both JSON and form-data requests
         if request.is_json:
@@ -621,7 +832,7 @@ def ai_chat_remark_api():
         # Input validation
         is_valid, error_msg = validate_input_length(user_input, Config.MAX_INPUT_LENGTH, 'userInput')
         if not is_valid:
-            logger.warning(f"Input validation failed: {error_msg}")
+            logger.warning(f"[{request_id}] Input validation failed: {error_msg}")
             return jsonify({
                 "success": False,
                 "error": error_msg,
@@ -635,23 +846,34 @@ def ai_chat_remark_api():
                 "code": "EMPTY_INPUT"
             }), 400
 
-        # Context validation (optional but if provided, validate length)
+        # Sanitize input for prompt injection prevention
+        sanitized_input, warnings = sanitize_prompt_input(user_input, Config.MAX_INPUT_LENGTH)
+        if warnings:
+            logger.info(f"[{request_id}] Input sanitization warnings: {warnings}")
+
+        # Context validation (optional but if provided, validate length and sanitize)
+        sanitized_context = None
         if context:
             is_valid, error_msg = validate_input_length(context, Config.MAX_CONTEXT_LENGTH, 'chatContext')
             if not is_valid:
-                logger.warning(f"Context validation failed: {error_msg}")
+                logger.warning(f"[{request_id}] Context validation failed: {error_msg}")
                 return jsonify({
                     "success": False,
                     "error": error_msg,
                     "code": "VALIDATION_ERROR"
                 }), 400
 
-        # Process AI request
-        if context and context.strip() and context != "null":
-            append_role = {"role": "system", "content": context}
-            ai_response = transferRemark(user_input, append_role)
+            # Sanitize context for prompt injection prevention
+            sanitized_context, ctx_warnings = sanitize_prompt_input(context, Config.MAX_CONTEXT_LENGTH)
+            if ctx_warnings:
+                logger.info(f"[{request_id}] Context sanitization warnings: {ctx_warnings}")
+
+        # Process AI request with sanitized input
+        if sanitized_context and sanitized_context.strip() and sanitized_context != "null":
+            append_role = {"role": "system", "content": sanitized_context}
+            ai_response = transferRemark(sanitized_input, append_role)
         else:
-            ai_response = transferRemark(user_input)
+            ai_response = transferRemark(sanitized_input)
 
         # Ensure response is in list format
         if isinstance(ai_response, str):
@@ -661,7 +883,7 @@ def ai_chat_remark_api():
         else:
             ai_response_list = [str(ai_response)]
 
-        logger.info(f"Successfully processed AI request, response length: {len(str(ai_response_list))}")
+        logger.info(f"[{request_id}] Successfully processed AI request, response length: {len(str(ai_response_list))}")
 
         return jsonify({
             "success": True,
@@ -671,7 +893,7 @@ def ai_chat_remark_api():
         })
 
     except Exception as e:
-        logger.error(f"Error processing AI request: {type(e).__name__}")
+        logger.error(f"[{request_id}] Error processing AI request: {type(e).__name__}")
         sanitized_error = sanitize_error_message(e)
 
         return jsonify({

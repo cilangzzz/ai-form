@@ -1425,41 +1425,192 @@
             }, 2000);
         },
 
-        // 拖拽功能
+        // 拖拽功能 - 高性能优化版本
         makeDraggable(element) {
             let isDragging = false;
-            let offsetX = 0;
-            let offsetY = 0;
+            let startX = 0;
+            let startY = 0;
+            let initialLeft = 0;
+            let initialTop = 0;
+            let rafId = null;
+            let pendingX = 0;
+            let pendingY = 0;
 
-            element.addEventListener('mousedown', (e) => {
-                if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.tagName === 'BUTTON') {
+            // 是否支持触摸事件
+            const hasTouchSupport = 'ontouchstart' in window;
+
+            // 获取元素当前位置
+            const getElementPosition = () => {
+                const style = window.getComputedStyle(element);
+                return {
+                    left: parseFloat(style.left) || element.offsetLeft || 0,
+                    top: parseFloat(style.top) || element.offsetTop || 0
+                };
+            };
+
+            // 边界限制
+            const clampPosition = (left, top) => {
+                const rect = element.getBoundingClientRect();
+                const maxX = window.innerWidth - rect.width;
+                const maxY = window.innerHeight - rect.height;
+                return {
+                    left: Math.max(0, Math.min(left, maxX)),
+                    top: Math.max(0, Math.min(top, maxY))
+                };
+            };
+
+            // 拖拽开始
+            const handleDragStart = (clientX, clientY) => {
+                // 忽略输入元素
+                const activeElement = document.activeElement;
+                if (activeElement && (
+                    activeElement.tagName === 'INPUT' ||
+                    activeElement.tagName === 'TEXTAREA' ||
+                    activeElement.tagName === 'BUTTON' ||
+                    activeElement.tagName === 'SELECT'
+                )) {
                     return;
                 }
+
                 isDragging = true;
-                offsetX = e.clientX - element.offsetLeft;
-                offsetY = e.clientY - element.offsetTop;
-                element.style.cursor = 'move';
+                startX = clientX;
+                startY = clientY;
+
+                const pos = getElementPosition();
+                initialLeft = pos.left;
+                initialTop = pos.top;
+
+                // 添加拖拽样式
+                element.style.cursor = 'grabbing';
+                element.style.userSelect = 'none';
+                element.style.willChange = 'transform';
+                element.classList.add('dragging');
+
+                // 防止文本选择
+                document.body.style.userSelect = 'none';
+            };
+
+            // 使用 RAF 节流的拖拽移动
+            const handleDragMove = (clientX, clientY) => {
+                if (!isDragging) return;
+
+                pendingX = clientX - startX;
+                pendingY = clientY - startY;
+
+                // 使用 requestAnimationFrame 节流
+                if (rafId === null) {
+                    rafId = requestAnimationFrame(() => {
+                        if (!isDragging) return;
+
+                        // 使用 transform 进行 GPU 加速移动
+                        element.style.transform = `translate(${pendingX}px, ${pendingY}px)`;
+                        rafId = null;
+                    });
+                }
+            };
+
+            // 拖拽结束
+            const handleDragEnd = () => {
+                if (!isDragging) return;
+
+                isDragging = false;
+
+                // 取消未完成的 RAF
+                if (rafId !== null) {
+                    cancelAnimationFrame(rafId);
+                    rafId = null;
+                }
+
+                // 计算最终位置
+                const newLeft = initialLeft + pendingX;
+                const newTop = initialTop + pendingY;
+
+                // 应用边界限制
+                const clampedPos = clampPosition(newLeft, newTop);
+
+                // 重置 transform，使用实际的 left/top
+                element.style.transform = '';
+                element.style.willChange = 'transform, opacity';
+                element.style.left = `${clampedPos.left}px`;
+                element.style.top = `${clampedPos.top}px`;
+                element.style.right = 'auto';
+                element.style.bottom = 'auto';
+                element.style.cursor = '';
+                element.style.userSelect = '';
+                element.classList.remove('dragging');
+
+                // 恢复文本选择
+                document.body.style.userSelect = '';
+
+                // 保存位置配置
+                Config.ui.position = {
+                    top: clampedPos.top,
+                    right: window.innerWidth - clampedPos.left - element.offsetWidth
+                };
+                Config.save();
+
+                // 重置状态
+                pendingX = 0;
+                pendingY = 0;
+            };
+
+            // 鼠标事件
+            element.addEventListener('mousedown', (e) => {
+                // 检查事件目标
+                if (e.target.tagName === 'INPUT' ||
+                    e.target.tagName === 'TEXTAREA' ||
+                    e.target.tagName === 'BUTTON' ||
+                    e.target.tagName === 'SELECT') {
+                    return;
+                }
+                e.preventDefault();
+                handleDragStart(e.clientX, e.clientY);
             });
 
             document.addEventListener('mousemove', (e) => {
-                if (!isDragging) return;
-                element.style.left = `${e.clientX - offsetX}px`;
-                element.style.top = `${e.clientY - offsetY}px`;
-                element.style.right = 'auto';
-                element.style.bottom = 'auto';
+                handleDragMove(e.clientX, e.clientY);
             });
 
-            document.addEventListener('mouseup', () => {
-                if (isDragging) {
-                    isDragging = false;
-                    element.style.cursor = 'default';
-                    Config.ui.position = {
-                        top: element.offsetTop,
-                        right: window.innerWidth - element.offsetLeft - element.offsetWidth
-                    };
-                    Config.save();
-                }
-            });
+            document.addEventListener('mouseup', handleDragEnd);
+
+            // 触摸事件支持
+            if (hasTouchSupport) {
+                element.addEventListener('touchstart', (e) => {
+                    if (e.target.tagName === 'INPUT' ||
+                        e.target.tagName === 'TEXTAREA' ||
+                        e.target.tagName === 'BUTTON' ||
+                        e.target.tagName === 'SELECT') {
+                        return;
+                    }
+                    const touch = e.touches[0];
+                    handleDragStart(touch.clientX, touch.clientY);
+                }, { passive: true });
+
+                document.addEventListener('touchmove', (e) => {
+                    if (!isDragging) return;
+                    const touch = e.touches[0];
+                    handleDragMove(touch.clientX, touch.clientY);
+                }, { passive: true });
+
+                document.addEventListener('touchend', handleDragEnd);
+                document.addEventListener('touchcancel', handleDragEnd);
+            }
+
+            // 添加拖拽时的样式
+            const dragStyle = document.createElement('style');
+            dragStyle.id = 'ai-drag-style';
+            if (!document.getElementById('ai-drag-style')) {
+                dragStyle.textContent = `
+                    #ai-settings-container.dragging {
+                        transition: none !important;
+                        pointer-events: none;
+                    }
+                    #ai-settings-container.dragging * {
+                        pointer-events: none !important;
+                    }
+                `;
+                document.head.appendChild(dragStyle);
+            }
         }
     };
 
