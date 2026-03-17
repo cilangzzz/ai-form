@@ -172,3 +172,33 @@ cython_debug/
 
 # PyPI configuration file
 .pypirc
+
+# ===========================================
+# AI-Form Specific Ignores
+# ===========================================
+
+# Environment files (contain secrets)
+.env
+.env.local
+.env.*.local
+server/python-simple-server/.env
+
+# Configuration files with secrets
+config.json
+config.local.json
+*-secret.json
+
+# Logs
+logs/
+*.log
+
+# IDE specific
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS specific
+.DS_Store
+Thumbs.db
