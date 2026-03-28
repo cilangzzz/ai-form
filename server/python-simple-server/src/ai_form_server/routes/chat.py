@@ -174,6 +174,36 @@ def create_chat_blueprint(chat_assistant: Optional[ChatAssistant] = None) -> Blu
                 user_input = "Generate test data for the form"
                 logger.info(f"[{request_id}] Generated default userInput from formMetadata")
 
+            # Build enhanced input with formMetadata context
+            enhanced_input = user_input
+            if form_metadata:
+                # Format formMetadata as readable context
+                fields_info = []
+                if isinstance(form_metadata, dict) and "fields" in form_metadata:
+                    for field in form_metadata.get("fields", []):
+                        field_desc = []
+                        if field.get("name"):
+                            field_desc.append(f"Field: {field.get('name')}")
+                        if field.get("type"):
+                            field_desc.append(f"Type: {field.get('type')}")
+                        if field.get("label"):
+                            field_desc.append(f"Label: {field.get('label')}")
+                        if field.get("placeholder"):
+                            field_desc.append(f"Placeholder: {field.get('placeholder')}")
+                        if field.get("required"):
+                            field_desc.append("Required: Yes")
+                        if field.get("options"):
+                            field_desc.append(f"Options: {field.get('options')}")
+                        if field_desc:
+                            fields_info.append(" - ".join(field_desc))
+
+                    if fields_info:
+                        enhanced_input = f"{user_input}\n\nForm Structure:\n" + "\n".join(fields_info)
+                        logger.info(f"[{request_id}] Enhanced input with formMetadata")
+                else:
+                    # Just append the raw JSON if not in expected format
+                    enhanced_input = f"{user_input}\n\nForm Metadata: {json.dumps(form_metadata)}"
+
             # Build data dict for schema validation
             data = {
                 "userInput": user_input,
@@ -214,9 +244,10 @@ def create_chat_blueprint(chat_assistant: Optional[ChatAssistant] = None) -> Blu
             role_def = get_role_by_type(role_type)
             chat_assistant.set_role(role_def["role"])
 
-            # Input validation
+            # Input validation (use enhanced_input if available)
+            input_to_validate = enhanced_input if form_metadata else user_input
             length_result = InputValidator.validate_length(
-                user_input, config.security.max_input_length, "userInput"
+                input_to_validate, config.security.max_input_length, "userInput"
             )
             if not length_result.is_valid:
                 logger.warning(f"[{request_id}] Input validation failed: {length_result.error_message}")
@@ -228,7 +259,7 @@ def create_chat_blueprint(chat_assistant: Optional[ChatAssistant] = None) -> Blu
                     }
                 ), 400
 
-            if not user_input or not user_input.strip():
+            if not input_to_validate or not input_to_validate.strip():
                 return jsonify(
                     {
                         "success": False,
@@ -239,7 +270,7 @@ def create_chat_blueprint(chat_assistant: Optional[ChatAssistant] = None) -> Blu
 
             # Sanitize input for prompt injection prevention
             sanitize_result = prompt_validator.sanitize(
-                user_input, config.security.max_input_length
+                input_to_validate, config.security.max_input_length
             )
             sanitized_input = sanitize_result.sanitized_text
             if sanitize_result.warnings:
