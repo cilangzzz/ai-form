@@ -26,6 +26,14 @@ tenacity>=8.2.0
 # Environment Variables
 python-dotenv>=1.0.0
 
+# YAML Support (for schema validation)
+pyyaml>=6.0
+
+# -------------------------------
+# Production Server
+# -------------------------------
+gunicorn>=21.0.0
+
 # -------------------------------
 # Authentication Dependencies
 # -------------------------------
