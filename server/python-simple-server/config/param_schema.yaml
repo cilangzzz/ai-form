@@ -1,0 +1,104 @@
+# AI-Form 请求参数 Schema 定义
+# 采用 Skill 输入参数规范模式
+
+inputs:
+  userInput:
+    type: "string"
+    required: true
+    description: "用户输入的表单描述或需求"
+    max_length: 10000
+    validation:
+      pattern: "^[\\s\\S]+$"
+      sanitize: true
+
+  chatContext:
+    type: "string"
+    required: false
+    default: ""
+    description: "对话上下文信息"
+    max_length: 50000
+
+  formMetadata:
+    type: "object"
+    required: false
+    description: "表单元数据结构"
+    properties:
+      fields:
+        type: "array"
+        description: "表单字段列表"
+        items:
+          type: "object"
+          properties:
+            type:
+              type: "string"
+              enum: ["text", "email", "password", "number", "tel", "url", "date", "select", "textarea", "checkbox", "radio"]
+            name: { type: "string" }
+            id: { type: "string" }
+            placeholder: { type: "string" }
+            label: { type: "string" }
+            required: { type: "boolean", default: false }
+            options:
+              type: "array"
+              items:
+                type: "object"
+                properties:
+                  value: { type: "string" }
+                  text: { type: "string" }
+      formId: { type: "string" }
+      formName: { type: "string" }
+      formAction: { type: "string" }
+      formMethod:
+        type: "string"
+        enum: ["GET", "POST"]
+
+  generationOptions:
+    type: "object"
+    required: false
+    default:
+      count: 1
+      mode: "standard"
+      locale: "zh-CN"
+      validateRules: true
+    description: "数据生成选项"
+    properties:
+      count:
+        type: "integer"
+        default: 1
+        min: 1
+        max: 10
+        description: "生成数据数量"
+      mode:
+        type: "string"
+        default: "standard"
+        enum: ["quick", "standard", "detailed"]
+        description: "生成模式"
+      locale:
+        type: "string"
+        default: "zh-CN"
+        enum: ["zh-CN", "en-US", "ja-JP"]
+        description: "数据语言地区"
+      validateRules:
+        type: "boolean"
+        default: true
+        description: "是否验证生成数据符合规则"
+
+  aiOptions:
+    type: "object"
+    required: false
+    description: "AI 服务选项"
+    properties:
+      model:
+        type: "string"
+        default: "qwen-turbo-latest"
+        description: "使用的AI模型"
+      temperature:
+        type: "float"
+        default: 0.7
+        min: 0.0
+        max: 2.0
+        description: "生成温度参数"
+      roleType:
+        type: "string"
+        default: "default_form"
+        enum: ["default_form", "coder", "md_generate", "worker_logger", "prompt_generation"]
+        description: "AI角色类型"
