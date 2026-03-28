@@ -121,10 +121,28 @@ class UIManager {
      * @param {HTMLElement} container
      */
     showLoading(container) {
+        // 设置位置（在显示之前）
+        this.updateContainerPosition(container);
+
         if (this.loadingIndicator) {
             this.loadingIndicator.show();
         }
         this.showContainer(container);
+    }
+
+    /**
+     * 更新容器位置到当前状态位置
+     * @param {HTMLElement} container
+     */
+    updateContainerPosition(container) {
+        if (!container) return;
+
+        // 清除默认的 right 定位，使用 left 定位
+        container.style.right = 'auto';
+
+        // 设置位置（相对于表单元素）
+        container.style.top = `${this.state.hisX + window.scrollY + 10}px`;
+        container.style.left = `${this.state.hisY + window.scrollX}px`;
     }
 
     /**
@@ -134,6 +152,9 @@ class UIManager {
      * @param {Function} retryCallback
      */
     showError(container, message, retryCallback) {
+        // 设置位置（在显示之前）
+        this.updateContainerPosition(container);
+
         if (this.loadingIndicator) {
             this.loadingIndicator.showError(message, retryCallback);
         }
@@ -181,8 +202,7 @@ class UIManager {
         this.showContainer(container);
 
         // 设置位置
-        container.style.top = `${this.state.hisX + window.scrollY + 10}px`;
-        container.style.left = `${this.state.hisY + window.scrollX}px`;
+        this.updateContainerPosition(container);
     }
 
     /**

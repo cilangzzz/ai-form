@@ -7,10 +7,24 @@ import { AdapterRegistry } from './AdapterRegistry.js';
  * Delegates to underlying framework adapters (Angular/React/Vue) when needed
  */
 class IonicAdapter extends BaseAdapter {
+    /**
+     * 适配器名称
+     * @returns {string}
+     */
+    get name() {
+        return 'ionic';
+    }
+
+    /**
+     * 适配器优先级
+     * @returns {number}
+     */
+    get priority() {
+        return 28;
+    }
+
     constructor() {
         super();
-        this.name = 'ionic';
-        this.priority = 28;
         this.frameworkVersion = null;
         this.underlyingFramework = null;
     }
@@ -370,7 +384,7 @@ class IonicAdapter extends BaseAdapter {
         }
 
         // Check for Ionic-specific attributes
-        if (element.hasAttribute('ion-) || element.classList.contains('ionic') || element.getAttributeNames().some(attr => attr.startsWith('ion-'))) {
+        if (element.hasAttribute('ion-') || element.classList.contains('ionic') || element.getAttributeNames().some(attr => attr.startsWith('ion-'))) {
             return true;
         }
 

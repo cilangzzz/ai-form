@@ -12,9 +12,15 @@ import eventBus, { Events } from './core/EventBus.js';
 import { ApiClient } from './api/ApiClient.js';
 import { ResponseParser } from './api/ResponseParser.js';
 
+// 创建实例
+const responseParser = new ResponseParser();
+
 // 表单处理模块
 import { FormDataExtractor } from './form/FormDataExtractor.js';
 import { FormFiller } from './form/FormFiller.js';
+
+// 创建 FormDataExtractor 实例
+const formDataExtractor = new FormDataExtractor();
 
 // UI 模块
 import UIManager from './ui/UIManager.js';
@@ -87,6 +93,7 @@ class App {
             timeout: this.config.api.timeout,
             maxRetries: this.config.api.maxRetries,
             retryDelay: this.config.api.retryDelay,
+            apiKey: this.config.api.apiKey,
             getApiUrl: () => this.config.getApiUrl()
         });
 
@@ -220,7 +227,7 @@ class App {
         const parentForm = this.formFiller.findParentForm(currentElement);
 
         // 提取表单元数据
-        const metadata = FormDataExtractor.extractFieldMetadata(parentForm || currentElement);
+        const metadata = formDataExtractor.extractFieldMetadata(parentForm || currentElement);
 
         if (!metadata || metadata.fields.length === 0) {
             this.showTooltip('No form fields detected');
@@ -241,12 +248,12 @@ class App {
 
         // 发送请求
         try {
-            const formData = FormDataExtractor.toFormData(metadata);
+            const formData = formDataExtractor.toFormData(metadata);
             const result = await this.apiClient.request(formData);
 
             if (result && result.data && result.data.response) {
                 const responseData = result.data.response[0];
-                const suggestions = ResponseParser.parse(responseData);
+                const suggestions = responseParser.parse(responseData);
 
                 this.eventBus.emit(Events.API_REQUEST_SUCCESS, { suggestions });
                 this.displaySuggestions(suggestions);

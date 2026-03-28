@@ -4,7 +4,7 @@
  */
 
 import { BaseAdapter } from './adapters/BaseAdapter.js';
-import { AdapterRegistry } from './adapters/AdapterRegistry.js';
+import AdapterRegistry from './adapters/AdapterRegistry.js';
 import { VanillaAdapter } from './adapters/VanillaAdapter.js';
 import { VueAdapter } from './adapters/VueAdapter.js';
 import { ReactAdapter } from './adapters/ReactAdapter.js';
@@ -16,13 +16,15 @@ export class FormFiller {
             ...config
         };
 
-        // 初始化适配器注册中心
-        this.registry = new AdapterRegistry();
+        // 使用全局单例适配器注册中心
+        this.registry = AdapterRegistry;
 
-        // 注册默认适配器
-        this.registry.register(new VanillaAdapter());
-        this.registry.register(new VueAdapter());
-        this.registry.register(new ReactAdapter());
+        // 注册默认适配器（如果尚未注册）
+        if (this.registry.getCount() === 0) {
+            this.registry.register(new VanillaAdapter());
+            this.registry.register(new VueAdapter());
+            this.registry.register(new ReactAdapter());
+        }
     }
 
     /**

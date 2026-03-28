@@ -20,6 +20,7 @@ const Config = {
     api: {
         server: GM.getValue('apiServer', 'http://192.168.3.186:5001'),
         endpoint: '/ai/chat_remark',
+        apiKey: GM.getValue('apiKey', 'mykey123'), // API Key for authentication
         timeout: GM.getValue('apiTimeout', 30000), // 30秒超时
         maxRetries: GM.getValue('maxRetries', 3),
         retryDelay: GM.getValue('retryDelay', 1000)
@@ -108,6 +109,15 @@ const Config = {
     setRetryDelay(retryDelay) {
         this.api.retryDelay = retryDelay;
         GM.setValue('retryDelay', retryDelay);
+    },
+
+    /**
+     * 更新 API Key
+     * @param {string} apiKey - API Key for authentication
+     */
+    setApiKey(apiKey) {
+        this.api.apiKey = apiKey;
+        GM.setValue('apiKey', apiKey);
     }
 };
 

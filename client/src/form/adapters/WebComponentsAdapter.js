@@ -5,10 +5,24 @@ import BaseAdapter from './BaseAdapter.js';
  * Handles detection and value setting for custom elements
  */
 class WebComponentsAdapter extends BaseAdapter {
+    /**
+     * 适配器名称
+     * @returns {string}
+     */
+    get name() {
+        return 'webcomponents';
+    }
+
+    /**
+     * 适配器优先级
+     * @returns {number}
+     */
+    get priority() {
+        return 20;
+    }
+
     constructor() {
         super();
-        this.name = 'webcomponents';
-        this.priority = 20;
         this.frameworkVersion = null;
     }
 

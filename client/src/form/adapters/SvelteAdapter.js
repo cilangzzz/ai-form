@@ -5,10 +5,24 @@ import BaseAdapter from './BaseAdapter.js';
  * Handles detection and value setting for Svelte components
  */
 class SvelteAdapter extends BaseAdapter {
+    /**
+     * 适配器名称
+     * @returns {string}
+     */
+    get name() {
+        return 'svelte';
+    }
+
+    /**
+     * 适配器优先级
+     * @returns {number}
+     */
+    get priority() {
+        return 25;
+    }
+
     constructor() {
         super();
-        this.name = 'svelte';
-        this.priority = 25;
         this.frameworkVersion = null;
     }
 

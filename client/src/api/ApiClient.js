@@ -10,6 +10,7 @@ export class ApiClient {
             maxRetries: config.maxRetries || 3,
             retryDelay: config.retryDelay || 1000,
             getApiUrl: config.getApiUrl || (() => ''),
+            apiKey: config.apiKey || 'mykey123',
             ...config
         };
         this.state = {
@@ -47,7 +48,8 @@ export class ApiClient {
                     url: this.config.getApiUrl(),
                     data: formData,
                     headers: {
-                        'Accept': 'application/json'
+                        'Accept': 'application/json',
+                        'X-API-Key': this.config.apiKey
                     },
                     responseType: 'json',
                     timeout: timeout,

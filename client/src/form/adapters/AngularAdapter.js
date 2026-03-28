@@ -6,10 +6,24 @@ import BaseAdapter from './BaseAdapter.js';
  * Supports both Angular reactive forms and template-driven forms
  */
 class AngularAdapter extends BaseAdapter {
+    /**
+     * 适配器名称
+     * @returns {string}
+     */
+    get name() {
+        return 'angular';
+    }
+
+    /**
+     * 适配器优先级
+     * @returns {number}
+     */
+    get priority() {
+        return 30;
+    }
+
     constructor() {
         super();
-        this.name = 'angular';
-        this.priority = 30;
         this.frameworkVersion = null;
     }
 
