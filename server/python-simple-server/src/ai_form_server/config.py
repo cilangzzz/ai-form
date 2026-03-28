@@ -85,7 +85,7 @@ class SecurityConfig:
     max_context_length: int = 50000  # 50KB default
 
     # JWT settings
-    jwt_secret_key: str = ""
+    jwt_secret_key: str = "123456"
     jwt_algorithm: str = "HS256"
     jwt_access_token_expires: int = 3600  # 1 hour
     jwt_refresh_token_expires: int = 2592000  # 30 days
@@ -102,7 +102,7 @@ class SecurityConfig:
         return cls(
             max_input_length=int(os.getenv("MAX_INPUT_LENGTH", "10000")),
             max_context_length=int(os.getenv("MAX_CONTEXT_LENGTH", "50000")),
-            jwt_secret_key=os.getenv("JWT_SECRET_KEY", ""),
+            jwt_secret_key=os.getenv("JWT_SECRET_KEY", "123456"),
             jwt_algorithm=os.getenv("JWT_ALGORITHM", "HS256"),
             jwt_access_token_expires=int(os.getenv("JWT_ACCESS_TOKEN_EXPIRES", "3600")),
             jwt_refresh_token_expires=int(

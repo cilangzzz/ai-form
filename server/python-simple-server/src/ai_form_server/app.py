@@ -22,6 +22,13 @@ from __future__ import annotations
 import logging
 import sys
 import uuid
+from pathlib import Path
+
+# Fix module path when running directly (e.g., PyCharm docrunner)
+# This allows the file to be run both directly and as a module
+_src_dir = Path(__file__).resolve().parent.parent
+if str(_src_dir) not in sys.path:
+    sys.path.insert(0, str(_src_dir))
 from datetime import timedelta
 from typing import Any, Dict, Optional
 
@@ -70,12 +77,12 @@ def create_app(config: Optional[Config] = None) -> Flask:
         Configured Flask application instance
 
     Example:
-        >>> app = create_app()
-        >>> app.run(host='0.0.0.0', port=5001)
+        >>> app = create_app()  # doctest: +SKIP
+        >>> app.run(host='0.0.0.0', port=5001)  # doctest: +SKIP
 
         >>> # With custom config
-        >>> config = Config.from_env()
-        >>> app = create_app(config)
+        >>> config = Config.from_env()  # doctest: +SKIP
+        >>> app = create_app(config)  # doctest: +SKIP
     """
     # Initialize configuration
     if config is None:
@@ -332,3 +339,17 @@ def _validate_config(config: Config) -> None:
 __all__ = [
     "create_app",
 ]
+
+
+if __name__ == "__main__":
+    # Run server when executed directly
+    config = get_config()
+    logger.info(f"Starting AI-Form Server on {config.flask.host}:{config.flask.port}")
+    logger.info(f"Debug mode: {config.flask.debug}")
+
+    app = create_app(config)
+    app.run(
+        host=config.flask.host,
+        port=config.flask.port,
+        debug=config.flask.debug,
+    )

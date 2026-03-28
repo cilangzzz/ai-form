@@ -15,16 +15,10 @@ This package contains API route blueprints:
 
 from ai_form_server.routes.chat import (
     create_chat_blueprint,
-    detect_prompt_injection,
-    sanitize_error_message,
-    sanitize_prompt_input,
-    validate_input_length,
+    prompt_validator,
 )
 
 __all__ = [
     "create_chat_blueprint",
-    "detect_prompt_injection",
-    "sanitize_prompt_input",
-    "validate_input_length",
-    "sanitize_error_message",
+    "prompt_validator",
 ]
