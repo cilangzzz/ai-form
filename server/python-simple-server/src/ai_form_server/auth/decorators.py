@@ -100,10 +100,19 @@ def require_auth(roles: Optional[List[str]] = None) -> Callable:
                 return f(*args, **kwargs)
 
             # Try API key authentication
-            api_key_header = config.security.api_keys[0] if config.security.api_keys else "X-API-Key"
-            api_key = request.headers.get(api_key_header, "") or request.headers.get("X-API-Key", "")
+            # Get API key from X-API-Key header
+            api_key = request.headers.get("X-API-Key", "")
 
             if api_key:
+                # First check against configured API keys (simple validation)
+                if api_key in config.security.api_keys:
+                    g.current_user = {
+                        "username": "api_user",
+                        "role": "user",
+                    }
+                    return f(*args, **kwargs)
+
+                # Then check UserStore for user-bound API keys
                 user = UserStore.get_user_by_api_key(api_key)
                 if user:
                     if not user.get("active", False):
