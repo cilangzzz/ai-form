@@ -3,8 +3,11 @@
  * 提供请求重试机制、超时处理和GM_xmlhttpRequest封装
  */
 
+import RequestBuilder, { ValidationError } from './RequestBuilder.js';
+
 export class ApiClient {
     constructor(config = {}) {
+        this.requestBuilder = new RequestBuilder();
         this.config = {
             timeout: config.timeout || 30000,
             maxRetries: config.maxRetries || 3,
@@ -21,7 +24,7 @@ export class ApiClient {
 
     /**
      * 发送请求（带重试机制）
-     * @param {FormData} formData - 要发送的表单数据
+     * @param {FormData|Object} formData - 要发送的表单数据或JSON对象
      * @param {number} retryCount - 当前重试次数
      * @returns {Promise<Object>} - 返回响应数据
      */
@@ -35,22 +38,36 @@ export class ApiClient {
         const timeout = this.config.timeout;
         const maxRetries = this.config.maxRetries;
 
+        // 检测请求类型
+        const isJsonData = typeof formData === 'object' && !(formData instanceof FormData);
+
         return new Promise((resolve, reject) => {
             const timeoutId = setTimeout(() => {
                 this.state.isRequestPending = false;
                 reject(new Error(`Request timeout after ${timeout}ms`));
             }, timeout);
 
+            // 构建请求选项
+            const requestHeaders = {
+                'Accept': 'application/json',
+                'X-API-Key': this.config.apiKey
+            };
+
+            let requestData;
+            if (isJsonData) {
+                requestHeaders['Content-Type'] = 'application/json';
+                requestData = JSON.stringify(formData);
+            } else {
+                requestData = formData;
+            }
+
             // 使用 GM_xmlhttpRequest 发送请求
             if (typeof GM_xmlhttpRequest !== 'undefined') {
                 GM_xmlhttpRequest({
                     method: 'POST',
                     url: this.config.getApiUrl(),
-                    data: formData,
-                    headers: {
-                        'Accept': 'application/json',
-                        'X-API-Key': this.config.apiKey
-                    },
+                    data: requestData,
+                    headers: requestHeaders,
                     responseType: 'json',
                     timeout: timeout,
                     onload: (response) => {
@@ -109,6 +126,43 @@ export class ApiClient {
                 reject(new Error('GM_xmlhttpRequest is not available'));
             }
         });
+    }
+
+    /**
+     * 发送带验证的请求
+     * @param {Object} params - 请求参数对象
+     * @param {boolean} useJson - 是否使用 JSON 格式（默认 FormData）
+     * @returns {Promise<Object>} 响应结果
+     */
+    async requestWithValidation(params, useJson = false) {
+        try {
+            // 构建请求数据
+            const requestData = useJson
+                ? this.requestBuilder.buildJson(params)
+                : this.requestBuilder.buildFormData(params);
+
+            // 发送请求
+            return await this.request(requestData);
+        } catch (error) {
+            if (error instanceof ValidationError) {
+                // 验证错误，直接返回错误信息
+                console.error('Validation error:', error.errors);
+                return {
+                    success: false,
+                    error: error.errors,
+                    code: 'VALIDATION_ERROR'
+                };
+            }
+            throw error;
+        }
+    }
+
+    /**
+     * 获取可用角色类型列表
+     * @returns {string[]}
+     */
+    getAvailableRoleTypes() {
+        return this.requestBuilder.getAvailableRoleTypes();
     }
 
     /**

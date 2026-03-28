@@ -40,6 +40,38 @@ const Config = {
         debounceDelay: 100
     },
 
+    // 请求参数配置
+    request: {
+        validateOnSend: true,
+        sanitizeInput: true,
+        defaults: {
+            generationOptions: {
+                count: 1,
+                mode: 'standard',
+                locale: 'zh-CN',
+                validateRules: true
+            },
+            aiOptions: {
+                model: 'qwen-turbo-latest',
+                temperature: 0.7,
+                roleType: 'default_form'
+            }
+        }
+    },
+
+    // 错误处理配置
+    errorHandling: {
+        retryStrategy: 'exponential',
+        maxRetries: 3,
+        errorActions: {
+            VALIDATION_ERROR: 'show_message',
+            SCHEMA_VALIDATION_ERROR: 'show_message',
+            AI_SERVICE_ERROR: 'retry_fallback',
+            RATE_LIMIT_ERROR: 'delay_retry',
+            INVALID_ROLE_TYPE: 'show_message'
+        }
+    },
+
     /**
      * 从 localStorage 加载设置
      */
@@ -55,6 +87,18 @@ const Config = {
 
         const storedPosition = localStorage.getItem('settingsPosition');
         if (storedPosition) this.ui.position = JSON.parse(storedPosition);
+
+        // 加载生成选项
+        const storedGenerationOptions = localStorage.getItem('generationOptions');
+        if (storedGenerationOptions) {
+            Object.assign(this.request.defaults.generationOptions, JSON.parse(storedGenerationOptions));
+        }
+
+        // 加载 AI 选项
+        const storedAiOptions = localStorage.getItem('aiOptions');
+        if (storedAiOptions) {
+            Object.assign(this.request.defaults.aiOptions, JSON.parse(storedAiOptions));
+        }
     },
 
     /**
@@ -118,6 +162,69 @@ const Config = {
     setApiKey(apiKey) {
         this.api.apiKey = apiKey;
         GM.setValue('apiKey', apiKey);
+    },
+
+    /**
+     * 获取请求默认参数
+     * @returns {Object} 默认参数对象
+     */
+    getRequestDefaults() {
+        return this.request.defaults;
+    },
+
+    /**
+     * 设置生成选项
+     * @param {string} key - 选项键名
+     * @param {*} value - 选项值
+     */
+    setGenerationOption(key, value) {
+        if (!this.request.defaults.generationOptions) {
+            this.request.defaults.generationOptions = {};
+        }
+        this.request.defaults.generationOptions[key] = value;
+        localStorage.setItem('generationOptions', JSON.stringify(this.request.defaults.generationOptions));
+    },
+
+    /**
+     * 设置 AI 选项
+     * @param {string} key - 选项键名
+     * @param {*} value - 选项值
+     */
+    setAiOption(key, value) {
+        if (!this.request.defaults.aiOptions) {
+            this.request.defaults.aiOptions = {};
+        }
+        this.request.defaults.aiOptions[key] = value;
+        localStorage.setItem('aiOptions', JSON.stringify(this.request.defaults.aiOptions));
+    },
+
+    /**
+     * 设置角色类型
+     * @param {string} roleType - 角色类型 (default_form, coder, md_generate, etc.)
+     */
+    setRoleType(roleType) {
+        this.setAiOption('roleType', roleType);
+    },
+
+    /**
+     * 获取当前角色类型
+     * @returns {string} 当前角色类型
+     */
+    getRoleType() {
+        const stored = localStorage.getItem('aiOptions');
+        if (stored) {
+            const options = JSON.parse(stored);
+            return options.roleType || 'default_form';
+        }
+        return this.request.defaults.aiOptions?.roleType || 'default_form';
+    },
+
+    /**
+     * 获取错误处理配置
+     * @returns {Object} 错误处理配置
+     */
+    getErrorHandling() {
+        return this.errorHandling;
     }
 };
 

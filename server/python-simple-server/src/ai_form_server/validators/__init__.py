@@ -13,13 +13,18 @@ Provides:
 - PromptValidator: For detecting and sanitizing prompt injection attempts
 - InputValidator: For validating input length and sanitizing error messages
 - PatternsRegistry: For managing prompt injection patterns
+- SchemaValidator: For YAML schema-based parameter validation
 """
 
 from ai_form_server.validators.input import InputValidator
 from ai_form_server.validators.prompt import PromptValidator, PatternsRegistry
+from ai_form_server.validators.schema import SchemaValidator, SchemaValidationResult, get_schema_validator
 
 __all__ = [
     "PromptValidator",
     "InputValidator",
     "PatternsRegistry",
+    "SchemaValidator",
+    "SchemaValidationResult",
+    "get_schema_validator",
 ]

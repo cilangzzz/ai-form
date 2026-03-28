@@ -16,6 +16,7 @@ Provides endpoints for:
 
 from __future__ import annotations
 
+import json
 import logging
 from functools import wraps
 from typing import Any, Callable, Dict, Optional, Tuple
@@ -26,8 +27,13 @@ from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_ex
 from ai_form_server.auth.decorators import require_auth
 from ai_form_server.config import get_config
 from ai_form_server.services.chat import ChatAssistant
-from ai_form_server.services.roles import DEFAULT_FORM_ROLE
+from ai_form_server.services.roles import (
+    DEFAULT_FORM_ROLE,
+    get_role_by_type,
+    validate_role_type,
+)
 from ai_form_server.validators import PromptValidator, InputValidator
+from ai_form_server.validators.schema import get_schema_validator
 
 logger = logging.getLogger(__name__)
 
@@ -133,6 +139,9 @@ def create_chat_blueprint(chat_assistant: Optional[ChatAssistant] = None) -> Blu
         Request body (JSON or form-data):
             - userInput: User input text (required, max 10000 chars)
             - chatContext: Additional context (optional, max 50000 chars)
+            - formMetadata: Form metadata object (optional)
+            - generationOptions: Generation options (optional)
+            - aiOptions: AI options including roleType (optional)
 
         Returns:
             JSON response with AI-generated test data
@@ -140,14 +149,70 @@ def create_chat_blueprint(chat_assistant: Optional[ChatAssistant] = None) -> Blu
         request_id = getattr(g, "request_id", "N/A")
 
         try:
-            # Support both JSON and form-data requests
+            # Support both JSON and form-data requests with extended parameters
             if request.is_json:
                 data = request.get_json()
                 user_input = data.get("userInput")
                 context = data.get("chatContext")
+                form_metadata = data.get("formMetadata")
+                generation_options = data.get("generationOptions", {})
+                ai_options = data.get("aiOptions", {})
             else:
                 user_input = request.form.get("userInput")
                 context = request.form.get("chatContext")
+                # Parse extended parameters from form data
+                form_metadata_str = request.form.get("formMetadata")
+                form_metadata = json.loads(form_metadata_str) if form_metadata_str else None
+                generation_options_str = request.form.get("generationOptions")
+                generation_options = json.loads(generation_options_str) if generation_options_str else {}
+                ai_options_str = request.form.get("aiOptions")
+                ai_options = json.loads(ai_options_str) if ai_options_str else {}
+
+            # Backward compatibility: if userInput is empty but formMetadata exists,
+            # generate userInput from formMetadata
+            if (not user_input or not user_input.strip()) and form_metadata:
+                user_input = "Generate test data for the form"
+                logger.info(f"[{request_id}] Generated default userInput from formMetadata")
+
+            # Build data dict for schema validation
+            data = {
+                "userInput": user_input,
+                "chatContext": context,
+                "formMetadata": form_metadata,
+                "generationOptions": generation_options,
+                "aiOptions": ai_options,
+            }
+
+            # Schema validation (if enabled)
+            if config.request_params.validate_schema:
+                schema_validator = get_schema_validator()
+                validation_result = schema_validator.validate_request(data)
+                if not validation_result.is_valid:
+                    logger.warning(f"[{request_id}] Schema validation failed: {validation_result.errors}")
+                    return jsonify({
+                        "success": False,
+                        "error": validation_result.errors,
+                        "code": "SCHEMA_VALIDATION_ERROR",
+                    }), 400
+                # Apply defaults
+                data = schema_validator.apply_defaults(data)
+                user_input = data.get("userInput", user_input)
+                generation_options = data.get("generationOptions", {})
+                ai_options = data.get("aiOptions", {})
+
+            # Extract role type and validate
+            role_type = ai_options.get("roleType", config.ai_options.default_role_type)
+            if not validate_role_type(role_type, config.ai_options.allowed_role_types):
+                logger.warning(f"[{request_id}] Invalid role type: {role_type}")
+                return jsonify({
+                    "success": False,
+                    "error": f"Invalid role type '{role_type}'. Allowed: {config.ai_options.allowed_role_types}",
+                    "code": "INVALID_ROLE_TYPE",
+                }), 400
+
+            # Set role based on roleType
+            role_def = get_role_by_type(role_type)
+            chat_assistant.set_role(role_def["role"])
 
             # Input validation
             length_result = InputValidator.validate_length(

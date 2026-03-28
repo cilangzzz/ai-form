@@ -166,8 +166,96 @@ class CORSConfig:
 
 
 @dataclass
+class RequestParamConfig:
+    """Request parameter configuration following Skill specification."""
+
+    validate_schema: bool = True
+    sanitize_input: bool = True
+    max_metadata_fields: int = 100
+
+    # Generation options defaults
+    default_generation_count: int = 1
+    default_generation_mode: str = "standard"
+    allowed_generation_modes: List[str] = field(
+        default_factory=lambda: ["quick", "standard", "detailed"]
+    )
+    allowed_locales: List[str] = field(
+        default_factory=lambda: ["zh-CN", "en-US", "ja-JP"]
+    )
+
+    @classmethod
+    def from_env(cls) -> "RequestParamConfig":
+        return cls(
+            validate_schema=os.getenv("VALIDATE_SCHEMA", "true").lower() == "true",
+            sanitize_input=os.getenv("SANITIZE_INPUT", "true").lower() == "true",
+            max_metadata_fields=int(os.getenv("MAX_METADATA_FIELDS", "100")),
+            default_generation_count=int(os.getenv("DEFAULT_GENERATION_COUNT", "1")),
+            default_generation_mode=os.getenv("DEFAULT_GENERATION_MODE", "standard"),
+        )
+
+
+@dataclass
+class AIOptionsConfig:
+    """AI options configuration for multi-role support."""
+
+    default_model: str = "qwen-turbo-latest"
+    default_temperature: float = 0.7
+    default_role_type: str = "default_form"
+
+    allowed_models: List[str] = field(
+        default_factory=lambda: ["qwen-turbo-latest", "deepseek-chat", "deepseek-reasoner"]
+    )
+    allowed_role_types: List[str] = field(
+        default_factory=lambda: [
+            "default_form",
+            "coder",
+            "md_generate",
+            "worker_logger",
+            "prompt_generation"
+        ]
+    )
+
+    @classmethod
+    def from_env(cls) -> "AIOptionsConfig":
+        return cls(
+            default_model=os.getenv("AI_MODEL_NAME", "qwen-turbo-latest"),
+            default_temperature=float(os.getenv("AI_TEMPERATURE", "0.7")),
+            default_role_type=os.getenv("AI_DEFAULT_ROLE", "default_form"),
+        )
+
+
+@dataclass
+class ErrorHandlingConfig:
+    """Error handling configuration."""
+
+    retry_strategy: str = "exponential"
+    max_retries: int = 3
+    retry_delay_min: float = 1.0
+    retry_delay_max: float = 10.0
+
+    error_actions: Dict[str, Dict[str, Any]] = field(
+        default_factory=lambda: {
+            "VALIDATION_ERROR": {"severity": "warning", "action": "show_message"},
+            "SCHEMA_VALIDATION_ERROR": {"severity": "warning", "action": "show_message"},
+            "AI_SERVICE_ERROR": {"severity": "error", "action": "retry_fallback"},
+            "RATE_LIMIT_ERROR": {"severity": "warning", "action": "delay_retry"},
+            "AUTHENTICATION_ERROR": {"severity": "critical", "action": "abort"},
+        }
+    )
+
+    @classmethod
+    def from_env(cls) -> "ErrorHandlingConfig":
+        return cls(
+            retry_strategy=os.getenv("RETRY_STRATEGY", "exponential"),
+            max_retries=int(os.getenv("MAX_RETRIES", "3")),
+            retry_delay_min=float(os.getenv("RETRY_DELAY_MIN", "1.0")),
+            retry_delay_max=float(os.getenv("RETRY_DELAY_MAX", "10.0")),
+        )
+
+
+@dataclass
 class Config:
-    """Main application configuration.
+    """Main application configuration (extended).
 
     Aggregates all configuration sections and provides
     unified access to configuration values.
@@ -176,6 +264,7 @@ class Config:
         config = Config.from_env()
         print(config.flask.host)
         print(config.ai.model_name)
+        print(config.ai_options.default_role_type)
     """
 
     flask: FlaskConfig = field(default_factory=FlaskConfig)
@@ -183,6 +272,12 @@ class Config:
     security: SecurityConfig = field(default_factory=SecurityConfig)
     rate_limit: RateLimitConfig = field(default_factory=RateLimitConfig)
     cors: CORSConfig = field(default_factory=CORSConfig)
+
+    # Extended configurations
+    request_params: RequestParamConfig = field(default_factory=RequestParamConfig)
+    ai_options: AIOptionsConfig = field(default_factory=AIOptionsConfig)
+    error_handling: ErrorHandlingConfig = field(default_factory=ErrorHandlingConfig)
+
     log_level: str = "INFO"
 
     @classmethod
@@ -194,6 +289,9 @@ class Config:
             security=SecurityConfig.from_env(),
             rate_limit=RateLimitConfig.from_env(),
             cors=CORSConfig.from_env(),
+            request_params=RequestParamConfig.from_env(),
+            ai_options=AIOptionsConfig.from_env(),
+            error_handling=ErrorHandlingConfig.from_env(),
             log_level=os.getenv("LOG_LEVEL", "INFO").upper(),
         )
 
@@ -320,6 +418,9 @@ __all__ = [
     "SecurityConfig",
     "RateLimitConfig",
     "CORSConfig",
+    "RequestParamConfig",
+    "AIOptionsConfig",
+    "ErrorHandlingConfig",
     "get_config",
     "init_config",
 ]

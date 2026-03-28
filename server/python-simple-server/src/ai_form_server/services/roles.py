@@ -15,7 +15,7 @@ the behavior and personality of AI assistants.
 
 from __future__ import annotations
 
-from typing import Dict, List
+from typing import Any, Dict, List
 
 # Default role for form data generation
 DEFAULT_FORM_ROLE: List[Dict[str, str]] = [
@@ -276,6 +276,68 @@ PROMPT_GENERATION_ROLE: List[Dict[str, str]] = (
 )
 
 
+# Multi-role definition mapping for Skill-style role management
+ROLE_DEFINITIONS: Dict[str, Dict[str, Any]] = {
+    "default_form": {
+        "name": "Form Filler",
+        "description": "智能表单数据生成助手",
+        "role": DEFAULT_FORM_ROLE,
+    },
+    "coder": {
+        "name": "Coder",
+        "description": "代码生成和脚本编写助手",
+        "role": SYSTEM_CODER_ROLE[0] if SYSTEM_CODER_ROLE else [],
+    },
+    "md_generate": {
+        "name": "Markdown Generator",
+        "description": "Markdown 文档生成助手",
+        "role": SYSTEM_MD_GENERATE_ROLE,
+    },
+    "worker_logger": {
+        "name": "Worker Logger",
+        "description": "工作日志记录助手",
+        "role": SYSTEM_WORKER_LOGGER_ROLE,
+    },
+    "prompt_generation": {
+        "name": "Prompt Generator",
+        "description": "AI Prompt 生成助手",
+        "role": PROMPT_GENERATION_ROLE,
+    },
+}
+
+
+def get_role_by_type(role_type: str) -> Dict[str, Any]:
+    """Get role definition by type.
+
+    Args:
+        role_type: Role type identifier
+
+    Returns:
+        Role definition dictionary with 'name', 'description', and 'role' keys
+    """
+    return ROLE_DEFINITIONS.get(role_type, ROLE_DEFINITIONS["default_form"])
+
+
+def get_available_role_types() -> List[str]:
+    """Get list of available role types."""
+    return list(ROLE_DEFINITIONS.keys())
+
+
+def validate_role_type(role_type: str, allowed_types: List[str] = None) -> bool:
+    """Validate if role type is allowed.
+
+    Args:
+        role_type: Role type to validate
+        allowed_types: Optional list of allowed types (defaults to all)
+
+    Returns:
+        True if role type is valid
+    """
+    if allowed_types is None:
+        allowed_types = get_available_role_types()
+    return role_type in allowed_types
+
+
 def get_role(role_name: str) -> List[Dict[str, str]]:
     """Get a role configuration by name.
 
@@ -310,5 +372,9 @@ __all__ = [
     "SYSTEM_PROMPT_GENERATION_ROLE_FORMAT_BASE",
     "SYSTEM_PROMPT_GENERATION_ROLE",
     "PROMPT_GENERATION_ROLE",
+    "ROLE_DEFINITIONS",
     "get_role",
+    "get_role_by_type",
+    "get_available_role_types",
+    "validate_role_type",
 ]
