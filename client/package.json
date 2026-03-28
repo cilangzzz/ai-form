@@ -1,0 +1,32 @@
+{
+  "name": "ai-form-userscript",
+  "version": "0.2.0",
+  "description": "AI Form Autofill Helper - Userscript built with Rollup",
+  "main": "dist/ai-form.user.js",
+  "type": "module",
+  "scripts": {
+    "build": "rollup -c build/rollup.config.js",
+    "watch": "rollup -c build/rollup.config.js -w",
+    "dev": "npm run watch",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage"
+  },
+  "devDependencies": {
+    "@rollup/plugin-node-resolve": "^15.2.3",
+    "@rollup/plugin-commonjs": "^25.0.7",
+    "@vitest/coverage-v8": "^2.0.0",
+    "happy-dom": "^14.0.0",
+    "rollup": "^4.18.0",
+    "vitest": "^2.0.0"
+  },
+  "keywords": [
+    "userscript",
+    "tampermonkey",
+    "ai",
+    "form",
+    "autofill"
+  ],
+  "author": "",
+  "license": "MIT"
+}

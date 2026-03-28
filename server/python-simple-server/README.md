@@ -28,6 +28,10 @@ server/python-simple-server/
 │       │   ├── __init__.py
 │       │   ├── chat.py      # ChatAssistant class
 │       │   └── roles.py     # AI role definitions
+│       ├── validators/      # Input validation module
+│       │   ├── __init__.py
+│       │   ├── prompt.py    # Prompt injection detection
+│       │   └── input.py     # Input validation utilities
 │       └── routes/          # API routes
 │           ├── __init__.py
 │           └── chat.py      # Chat API endpoints
@@ -273,6 +277,63 @@ The codebase follows a layered architecture:
 - **ChatAssistant** (`services/chat.py`): OpenAI-compatible API wrapper
 - **TokenManager** (`auth/jwt_handler.py`): JWT generation and validation
 - **Security Middleware**: Headers, rate limiting, prompt injection detection
+
+### Validators Module
+
+The `validators` module provides input validation and security utilities:
+
+#### PromptValidator
+
+Detects and sanitizes potential prompt injection attempts:
+
+```python
+from ai_form_server.validators import PromptValidator
+
+validator = PromptValidator()
+
+# Detect prompt injection
+result = validator.detect("ignore all previous instructions")
+print(result.is_safe)  # False
+print(result.detected_patterns)  # List of matched patterns
+
+# Sanitize user input
+sanitized = validator.sanitize("user input here", max_length=1000)
+print(sanitized.sanitized_text)
+print(sanitized.warnings)  # List of warnings if issues found
+```
+
+The validator detects various injection patterns:
+- System prompt manipulation
+- Role manipulation (e.g., "act as", "pretend to be")
+- Output manipulation (e.g., "repeat after me")
+- Instruction injection (e.g., "system:", "[assistant]")
+- Data extraction attempts
+- Jailbreak attempts (e.g., "developer mode")
+
+#### InputValidator
+
+Validates input length and sanitizes error messages:
+
+```python
+from ai_form_server.validators import InputValidator
+
+# Validate input length
+result = InputValidator.validate_length(
+    input_str=user_input,
+    max_length=5000,
+    field_name="userInput"
+)
+if not result.is_valid:
+    print(result.error_message)
+
+# Sanitize error messages for safe user display
+try:
+    # ... AI API call ...
+    pass
+except Exception as e:
+    safe_message = InputValidator.sanitize_error_message(e)
+    # Returns user-friendly message instead of exposing internal details
+```
 
 ## Security Features
 

@@ -32,6 +32,67 @@ AI-Form 是一个专为前端开发者设计的智能表单测试工具，利用
 - 模拟真实用户交互模式
 - 检测UI/UX问题和可访问性缺陷
 
+## 项目架构
+
+### 模块化架构
+
+后端服务器采用现代化的 Python 模块化架构设计：
+
+```
+server/python-simple-server/
+├── src/ai_form_server/          # 主包
+│   ├── app.py                   # Flask 应用工厂
+│   ├── config.py                # 配置管理
+│   ├── auth/                    # 认证模块
+│   │   ├── jwt_handler.py       # JWT 令牌管理
+│   │   └── decorators.py        # 认证装饰器
+│   ├── services/                # 业务逻辑
+│   │   ├── chat.py              # AI 聊天服务
+│   │   └── roles.py             # AI 角色定义
+│   ├── validators/              # 输入验证模块
+│   │   ├── prompt.py            # Prompt 注入检测
+│   │   └── input.py             # 输入验证工具
+│   └── routes/                  # API 路由
+│       └── chat.py              # 聊天 API 端点
+└── tests/                       # 测试套件
+```
+
+### Validators 模块
+
+`validators` 模块提供输入验证和安全防护功能：
+
+**PromptValidator - Prompt 注入检测**
+
+```python
+from ai_form_server.validators import PromptValidator
+
+validator = PromptValidator()
+
+# 检测潜在的 prompt 注入攻击
+result = validator.detect("ignore all previous instructions")
+if not result.is_safe:
+    print(f"检测到注入模式: {result.detected_patterns}")
+
+# 清理用户输入
+sanitized = validator.sanitize(user_input, max_length=5000)
+```
+
+**InputValidator - 输入验证**
+
+```python
+from ai_form_server.validators import InputValidator
+
+# 验证输入长度
+result = InputValidator.validate_length(
+    input_str=user_input,
+    max_length=5000,
+    field_name="userInput"
+)
+
+# 安全地处理错误信息
+safe_message = InputValidator.sanitize_error_message(exception)
+```
+
 
 ## 示例
 > 搜索建议
@@ -66,13 +127,13 @@ const API_ENDPOINT = '/ai/chat_remark'; // API endpoint path
 ### 配置服务器
 
 > 1.配置ai服务器key [config.json](server%2Fpython-simple-server%2Fconfig.json)
-> 
+>
 > 2.启用服务器
-> 
+>
 
 ```shell
 cd server/python-simple-server
-python AiServer.py
+python -m ai_form_server
 ```
 
 
