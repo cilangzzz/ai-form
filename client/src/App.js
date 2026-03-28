@@ -223,11 +223,15 @@ class App {
         this.state.hisX = rect.bottom;
         this.state.hisY = rect.left;
 
-        // 查找父表单
+        // 查找父表单或容器
         const parentForm = this.formFiller.findParentForm(currentElement);
+        const formContainer = parentForm || this.formFiller.findParentContainer(currentElement) || currentElement;
+
+        // 保存容器引用，用于后续填充
+        this.state.setFormContainer(formContainer);
 
         // 提取表单元数据
-        const metadata = formDataExtractor.extractFieldMetadata(parentForm || currentElement);
+        const metadata = formDataExtractor.extractFieldMetadata(formContainer);
 
         if (!metadata || metadata.fields.length === 0) {
             this.showTooltip('No form fields detected');
@@ -240,9 +244,9 @@ class App {
         }
 
         // 显示加载状态
-        const container = this.uiManager.getSuggestionContainer();
-        if (container) {
-            this.uiManager.showLoading(container);
+        const suggestionContainer = this.uiManager.getSuggestionContainer();
+        if (suggestionContainer) {
+            this.uiManager.showLoading(suggestionContainer);
         }
         this.eventBus.emit(Events.API_REQUEST_START, { metadata });
 
@@ -295,8 +299,9 @@ class App {
 
         this.eventBus.emit(Events.FORM_FILL_START, { suggestion });
 
-        // 使用表单填充器填充
-        const result = this.formFiller.fillFormFields(suggestion);
+        // 使用保存的表单容器进行填充（支持 Vue 等框架）
+        const formContainer = this.state.getFormContainer();
+        const result = this.formFiller.fillFormFields(suggestion, formContainer);
 
         this.eventBus.emit(Events.FORM_FILL_COMPLETE, { result, suggestion });
 
@@ -318,7 +323,8 @@ class App {
             console.warn('Failed to copy to clipboard:', err);
         }
 
-        // 隐藏建议容器
+        // 清除容器引用并隐藏建议容器
+        this.state.setFormContainer(null);
         this.hideSuggestions();
     }
 

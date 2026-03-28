@@ -12,6 +12,9 @@ const State = {
     hisX: 0,
     hisY: 0,
 
+    // 当前操作的表单容器（用于填充时定位）
+    currentFormContainer: null,
+
     // 聊天上下文
     chatContext: localStorage.getItem('aiAssistant_chatContext') || '',
 
@@ -27,6 +30,7 @@ const State = {
         this.currentRetryCount = 0;
         this.isRequestPending = false;
         this.abortController = null;
+        this.currentFormContainer = null;
     },
 
     /**
@@ -81,6 +85,22 @@ const State = {
     updateHistoryPosition(x, y) {
         this.hisX = x;
         this.hisY = y;
+    },
+
+    /**
+     * 设置当前表单容器
+     * @param {HTMLElement} container - 表单容器元素
+     */
+    setFormContainer(container) {
+        this.currentFormContainer = container;
+    },
+
+    /**
+     * 获取当前表单容器
+     * @returns {HTMLElement|null}
+     */
+    getFormContainer() {
+        return this.currentFormContainer;
     }
 };
 
