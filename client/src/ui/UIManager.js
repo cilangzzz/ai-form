@@ -8,6 +8,7 @@ import Styles from './styles/Styles.js';
 import SuggestionsContainer from './components/SuggestionsContainer.js';
 import SettingsPanel from './components/SettingsPanel.js';
 import LoadingIndicator from './components/LoadingIndicator.js';
+import Clipboard from '../core/Clipboard.js';
 
 class UIManager {
     constructor(config, state, utils) {
@@ -180,11 +181,11 @@ class UIManager {
                 if (formFiller) {
                     formFiller(suggestion);
                 }
-                try {
-                    await navigator.clipboard.writeText(summaryText);
+                const success = await Clipboard.writeText(summaryText);
+                if (success) {
                     this.showTooltip('Copied to clipboard');
-                } catch (err) {
-                    console.warn('Failed to copy to clipboard:', err);
+                } else {
+                    console.warn('Copy failed - please copy manually');
                 }
                 this.hideContainer(container);
             },

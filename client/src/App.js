@@ -7,6 +7,7 @@
 import Config from './core/Config.js';
 import State from './core/State.js';
 import eventBus, { Events } from './core/EventBus.js';
+import Clipboard from './core/Clipboard.js';
 
 // API 模块
 import { ApiClient } from './api/ApiClient.js';
@@ -317,11 +318,7 @@ class App {
             .map(([key, value]) => `${key}: ${value}`)
             .join(', ');
 
-        try {
-            navigator.clipboard.writeText(summaryText);
-        } catch (err) {
-            console.warn('Failed to copy to clipboard:', err);
-        }
+        Clipboard.writeText(summaryText);
 
         // 清除容器引用并隐藏建议容器
         this.state.setFormContainer(null);
